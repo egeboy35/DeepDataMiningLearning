@@ -134,10 +134,16 @@ Build a cache: `python -m ...gaussian4d.build_teacher --teacher voxel10 --out-di
 - Frozen strong-occ backbone → detection: weak (NDS 0.070).
 - Camera-only BEV lift, modality-robust C-only, VGGT: negative.
 
-## 6. Diagnostic (DynamicOcc student occ mIoU)  — <FILL>
+## 6. Diagnostic (DynamicOcc student occ mIoU) — REFUTED the simple mechanism
 Eval: `python -m ...gaussian4d.eval_student --ckpt output/student_dynamicocc/student.pth`.
-Expectation: LOW mIoU (sharp GT-box labels unpredictable from camera → weak occ student → bad det
-init), confirming the "label agreement ≠ transferable representation" mechanism.
+**Result: mIoU 0.1027 — essentially identical to voxel-soft (0.104).** So DynamicOcc is NOT a weaker
+occ model. Yet its det transfer (.087) is worse than voxel-soft's (.115). ⟹ **occ mIoU does NOT
+predict detection transfer**; the *pretraining objective* does. Demanding sharp GT-box objects the
+camera can't infer shaped worse detection features even at equal occ mIoU. Corrected lesson: neither
+label GT-agreement NOR student occ-mIoU is the right proxy — **what transfers is whether the pretext
+teaches camera-inferable structure.** (occ3d-GT, trained on full data, has both high occ mIoU AND
+high transfer; the label-free pretexts sit at ~0.10 occ mIoU and null/negative transfer.) The §4.6
+bg/fg decomposition tests whether *dense background* is the camera-inferable structure that transfers.
 
 ## 7. Where we stand / open direction
 Label-free occ *prediction* is now strong in the literature (TT-Occ, CVPR'26) but label-free occ **as a
