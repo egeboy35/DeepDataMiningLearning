@@ -224,7 +224,8 @@ def main():
     ap.add_argument("--occ-cb-power", type=float, default=0.25,
                     help="tempering exponent for class weights (0=uniform, 1=full inverse-freq)")
     ap.add_argument("--occ-cb-cache", default=None, help="cache file for computed class weights")
-    ap.add_argument("--backbone", choices=["resnet18", "dinov2", "dinov2_base", "vggt"], default="resnet18")
+    ap.add_argument("--backbone", choices=["resnet18", "dinov2", "dinov2_base", "dinov2_large", "vggt", "radio"],
+                    default="resnet18")
     ap.add_argument("--vggt-depth-cache", default=None,
                     help="dir of <token>.npy frozen-VGGT depth (N,fH,fW); enables the VGGT-depth "
                          "lift prior (ablation #2). Build with cache_vggt_depth.py.")

@@ -64,15 +64,24 @@ class CamEncoder(nn.Module):
             self.stem = nn.Sequential(net.conv1, net.bn1, net.relu, net.maxpool,
                                       net.layer1, net.layer2, net.layer3)   # stride 16, 256 ch
             feat_dim = 256
-        elif backbone in ("dinov2", "dinov2_base"):
+        elif backbone in ("dinov2", "dinov2_base", "dinov2_large"):
             from transformers import AutoModel
-            name = "facebook/dinov2-base" if backbone == "dinov2_base" else "facebook/dinov2-small"
+            name = {"dinov2": "facebook/dinov2-small", "dinov2_base": "facebook/dinov2-base",
+                    "dinov2_large": "facebook/dinov2-large"}[backbone]   # ViT-S/B/L, patch-14
             self.dino = AutoModel.from_pretrained(name)
             for p in self.dino.parameters():
                 p.requires_grad = False
-            feat_dim = 768 if backbone == "dinov2_base" else 384
+            feat_dim = {"dinov2": 384, "dinov2_base": 768, "dinov2_large": 1024}[backbone]
         elif backbone == "vggt":
             feat_dim = 2048        # frozen VGGT patch tokens, fed from cache (no in-module backbone)
+        elif backbone == "radio":  # NVIDIA agglomerative FM (distills DINOv2+CLIP+SAM), ViT patch-16
+            self.radio = torch.hub.load("NVlabs/RADIO", "radio_model", version="radio_v2.5-b",
+                                        progress=False, skip_validation=True)
+            for p in self.radio.parameters():
+                p.requires_grad = False
+            self.register_buffer("_imnet_mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+            self.register_buffer("_imnet_std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+            feat_dim = 768
         else:
             raise ValueError(backbone)
         self.depthnet = nn.Sequential(
@@ -83,6 +92,16 @@ class CamEncoder(nn.Module):
     def _features(self, x):
         if self.backbone == "resnet18":
             return self.stem(x)                                 # (B*N,256,H/16,W/16)
+        if self.backbone == "radio":                            # patch-16 -> interpolate to the patch-14 grid
+            import torch.nn.functional as F
+            b, _, H, W = x.shape
+            x01 = (x * self._imnet_std + self._imnet_mean).clamp(0, 1)   # de-norm -> [0,1] (RADIO re-norms)
+            Hr, Wr = (H // 16) * 16, (W // 16) * 16
+            xr = F.interpolate(x01, size=(Hr, Wr), mode="bilinear", align_corners=False)
+            with torch.no_grad():
+                _, spatial = self.radio(xr)                     # (b, (Hr/16)*(Wr/16), 768)
+            feat = spatial.transpose(1, 2).reshape(b, 768, Hr // 16, Wr // 16)
+            return F.interpolate(feat, size=(H // 14, W // 14), mode="bilinear", align_corners=False)
         b, _, H, W = x.shape
         with torch.no_grad():
             tok = self.dino(x).last_hidden_state[:, 1:]         # drop CLS -> (B*N, h*w, 384)
@@ -150,7 +169,7 @@ class LSSOccupancy(nn.Module):
         self.lidar_fusion = lidar_fusion
         # ablation: zero the camera lifted volume so the decoder sees LiDAR only (same params).
         self.lidar_only = lidar_only
-        _dino = backbone.startswith("dinov2") or backbone == "vggt"  # patch-14 grids at 252x700
+        _dino = backbone.startswith("dinov2") or backbone in ("vggt", "radio")  # 252x700 patch grids
         base_ds = 14 if _dino else 16
         # upsampling the features by U makes the effective patch/stride U× finer
         self.downsample = downsample or (base_ds // feat_upsample)
