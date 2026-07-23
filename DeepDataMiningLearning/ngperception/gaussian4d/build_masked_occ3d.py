@@ -26,9 +26,14 @@ def main():
     ap.add_argument("--keep", required=True, choices=["bg", "fg", "all"])
     ap.add_argument("--out-dir", required=True); ap.add_argument("--n", type=int, default=2044)
     ap.add_argument("--labelgen-cache", default=None, help="if set, match its token set (2044)")
+    ap.add_argument("--train-only", action="store_true", help="restrict to nuScenes train scenes (no val leak)")
     args = ap.parse_args()
     from ..occupancy.datasets import Occ3DNuScenesDataset
-    occ = Occ3DNuScenesDataset(args.gts, scenes=None)
+    scenes = None
+    if args.train_only:
+        from nuscenes.utils import splits
+        scenes = sorted(splits.train)
+    occ = Occ3DNuScenesDataset(args.gts, scenes=scenes)
     items = occ.items
     if args.labelgen_cache:
         items = [(sc, tok, lp) for sc, tok, lp in items

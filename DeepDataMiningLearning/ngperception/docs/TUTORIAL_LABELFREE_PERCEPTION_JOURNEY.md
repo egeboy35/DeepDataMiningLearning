@@ -145,6 +145,20 @@ teaches camera-inferable structure.** (occ3d-GT, trained on full data, has both 
 high transfer; the label-free pretexts sit at ~0.10 occ mIoU and null/negative transfer.) The §4.6
 bg/fg decomposition tests whether *dense background* is the camera-inferable structure that transfers.
 
+## 6b. CONFOUND FOUND (2026-07-22): data amount, not label-free-ness
+Control arm `all` = **full Occ3D-GT semantics** but pretrained on **only 2044 frames** (via
+train_student) → det mAP **0.1135 @2k** ≈ voxel-soft (.115), *below* scratch (.121), FAR below
+`lss_occ_full` (full ~28k frames, **0.163**). Same labels, different data amount ⇒ **the +35% is
+driven by pretraining DATA AMOUNT / occ-model strength, not label quality or fg/bg.**
+**Every label-free experiment we ran used only 2044 frames** (FM-semantics cache size), while the
+winning pretext used 28k — we compared label-free-2k vs labeled-28k. Consistent with occ mIoU:
+`lss_occ_full`≈0.30 (full) → +35%; our 2044 students ≈0.10 → null. **The label-free nulls may be
+data starvation, not a fundamental limit.** The fg/bg decomposition at 2044 is moot (null regime).
+**Decisive next test:** occ pretext data-scaling curve (2044 → 8k → 28k) via ONE trainer →
+det-transfer; and can a label-free pretext at FULL/cross-dataset scale reach the benefit? This makes
+the cross-dataset/PhysicalAI direction a **data-scale** play (label-free lets us use unlabeled fleets
+at scale), which is the natural motivation.
+
 ## 7. Where we stand / open direction
 Label-free occ *prediction* is now strong in the literature (TT-Occ, CVPR'26) but label-free occ **as a
 detection pretext** keeps failing on the same wall: the transfer benefit lives in dense,
