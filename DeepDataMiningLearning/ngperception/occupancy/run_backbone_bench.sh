@@ -4,7 +4,7 @@
 # cached); ResNet18 trainable baseline. Same LSS lift/head/data (2044 frames = VGGT cache size), so the
 # only variable is the backbone. Occ mIoU from train_lss's val eval. (Det arm added once VGGT caches are
 # plumbed into the det trainer; DINOv2/ResNet det come from the label-efficiency grids.)
-set -e
+set +e   # non-fatal: a missing grep must NOT abort the whole sweep
 cd /fs/atipa/data/rnd-liu/MyRepo/DeepDataMiningLearning
 export PYTHONPATH=/fs/atipa/data/rnd-liu/MyRepo/DeepDataMiningLearning
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
