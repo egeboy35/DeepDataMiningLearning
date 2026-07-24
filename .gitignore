@@ -183,3 +183,4 @@ yolo*.pt
 *.engine
 Others/FlashOCC/
 Others/Occ3D/
+Others/FusionOcc/
