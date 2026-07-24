@@ -18,7 +18,7 @@ PY="python -m DeepDataMiningLearning.ngperception.occupancy.train_lss"
 mkdir -p $OUT
 [ -f $CSV ] || echo "backbone,occ_mIoU,geo_IoU" > $CSV
 
-for bb in dinov2_base dinov2_large radio vggt; do   # DINOv2-B/L, RADIO (agglomerative FM), VGGT
+for bb in dinov2_base dinov2_large radio vggt siglip2; do   # DINOv2-B/L, RADIO (agglomerative FM), VGGT
   grep -q "^${bb}," $CSV && { echo "[bb] skip $bb"; continue; }
   extra=""; [ "$bb" = vggt ] && extra="--vggt-feat-cache $VF --vggt-depth-cache $VD"
   LG=$OUT/occ_${bb}.log

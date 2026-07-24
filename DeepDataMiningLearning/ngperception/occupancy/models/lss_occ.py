@@ -82,6 +82,14 @@ class CamEncoder(nn.Module):
             self.register_buffer("_imnet_mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
             self.register_buffer("_imnet_std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
             feat_dim = 768
+        elif backbone == "siglip2":  # google SigLIP2 vision-language FM, ViT patch-16, fixed 224
+            from transformers import AutoModel
+            self.siglip = AutoModel.from_pretrained("google/siglip2-base-patch16-224").vision_model
+            for p in self.siglip.parameters():
+                p.requires_grad = False
+            self.register_buffer("_imnet_mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
+            self.register_buffer("_imnet_std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
+            feat_dim = 768
         else:
             raise ValueError(backbone)
         self.depthnet = nn.Sequential(
@@ -101,6 +109,15 @@ class CamEncoder(nn.Module):
             with torch.no_grad():
                 _, spatial = self.radio(xr)                     # (b, (Hr/16)*(Wr/16), 768)
             feat = spatial.transpose(1, 2).reshape(b, 768, Hr // 16, Wr // 16)
+            return F.interpolate(feat, size=(H // 14, W // 14), mode="bilinear", align_corners=False)
+        if self.backbone == "siglip2":                          # fixed 224 -> 14x14 -> patch-14 grid
+            import torch.nn.functional as F
+            b, _, H, W = x.shape
+            x01 = (x * self._imnet_std + self._imnet_mean).clamp(0, 1)
+            xs = F.interpolate(x01, size=(224, 224), mode="bilinear", align_corners=False) * 2 - 1  # SigLIP [-1,1]
+            with torch.no_grad():
+                tok = self.siglip(xs).last_hidden_state         # (b,196,768)
+            feat = tok.transpose(1, 2).reshape(b, 768, 14, 14)
             return F.interpolate(feat, size=(H // 14, W // 14), mode="bilinear", align_corners=False)
         b, _, H, W = x.shape
         with torch.no_grad():
@@ -169,7 +186,7 @@ class LSSOccupancy(nn.Module):
         self.lidar_fusion = lidar_fusion
         # ablation: zero the camera lifted volume so the decoder sees LiDAR only (same params).
         self.lidar_only = lidar_only
-        _dino = backbone.startswith("dinov2") or backbone in ("vggt", "radio")  # 252x700 patch grids
+        _dino = backbone.startswith("dinov2") or backbone in ("vggt", "radio", "siglip2")  # 252x700 patch grids
         base_ds = 14 if _dino else 16
         # upsampling the features by U makes the effective patch/stride U× finer
         self.downsample = downsample or (base_ds // feat_upsample)

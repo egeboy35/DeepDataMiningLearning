@@ -18,7 +18,7 @@ DCFG="--decoder-layers 4 --decoder-hidden 96 --refine-iters 1 --det-head center"
 mkdir -p $OUT
 [ -f $CSV ] || echo "backbone,budget,seed,mAP,NDS,ped_AP" > $CSV
 
-for bb in dinov2_base dinov2_large radio; do        # VGGT-det deferred (needs cache plumbing)
+for bb in dinov2_base dinov2_large radio siglip2; do        # VGGT-det deferred (needs cache plumbing)
   grep -q "^${bb}," $CSV && { echo "[det] skip $bb"; continue; }
   ST=$OUT/occ_${bb}/lss_occ.pth
   echo "[det] waiting for occ ckpt: $ST"

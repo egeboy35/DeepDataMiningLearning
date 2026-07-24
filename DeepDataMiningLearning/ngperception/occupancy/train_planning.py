@@ -88,6 +88,33 @@ class PlanHead(nn.Module):
         return self.mlp(torch.cat([f, cmd], 1)).reshape(B, T, 2)
 
 
+class PlanHeadBC(nn.Module):
+    """Patch-Policy-style planning: attend over DENSE spatial BEV tokens (not global-pool) with a
+    transformer, plus a command token; a `query` token reads out the trajectory. Block-causal INTERFACE
+    (`mask`) for temporal windows — single-frame = full intra-frame attention (its degenerate case).
+    Follows LeCun et al. 'Patch Policy': dense frozen-ViT features + lightweight transformer head."""
+    def __init__(self, ncls=18, nz=16, dim=192, layers=4, heads=6, grid=25):
+        super().__init__()
+        self.grid = grid
+        self.embed = nn.Conv2d(ncls * nz, dim, kernel_size=200 // grid, stride=200 // grid)  # BEV -> gridxgrid tokens
+        self.pos = nn.Parameter(torch.zeros(1, grid * grid, dim))
+        self.cmd = nn.Linear(3, dim)
+        self.query = nn.Parameter(torch.zeros(1, 1, dim))
+        enc = nn.TransformerEncoderLayer(dim, heads, dim * 4, batch_first=True, activation="gelu")
+        self.tr = nn.TransformerEncoder(enc, layers)
+        self.out = nn.Linear(dim, T * 2)
+        nn.init.trunc_normal_(self.pos, std=0.02); nn.init.trunc_normal_(self.query, std=0.02)
+
+    def forward(self, occ, cmd, mask=None):
+        B, C, X, Y, Z = occ.shape
+        bev = occ.permute(0, 1, 4, 2, 3).reshape(B, C * Z, X, Y)
+        tok = self.embed(bev).flatten(2).transpose(1, 2)                      # (B, grid^2, dim)
+        tok = tok + self.pos
+        seq = torch.cat([self.query.expand(B, -1, -1), self.cmd(cmd)[:, None], tok], 1)  # query + cmd + patches
+        out = self.tr(seq, mask=mask)[:, 0]                                    # read the query token
+        return self.out(out).reshape(B, T, 2)
+
+
 def collision_rate(waypoints, sem):
     """Fraction of predicted waypoints landing in an obstacle voxel of the Occ3D-GT (any z)."""
     lo = np.asarray(PC_RANGE[:2], np.float32); gx, gy = int(GRID_SIZE[0]), int(GRID_SIZE[1])
@@ -110,6 +137,8 @@ def main():
     ap.add_argument("--epochs", type=int, default=12); ap.add_argument("--batch-size", type=int, default=4)
     ap.add_argument("--lr", type=float, default=2e-3); ap.add_argument("--num-workers", type=int, default=6)
     ap.add_argument("--out-dir", required=True); ap.add_argument("--device", default="cuda")
+    ap.add_argument("--head", choices=["cnn", "transformer"], default="transformer",
+                    help="transformer = Patch-Policy-style dense-token attention (default)")
     args = ap.parse_args()
     dev = args.device
     from nuscenes import NuScenes
@@ -122,7 +151,8 @@ def main():
     occ.eval()
     for p in occ.parameters():
         p.requires_grad = False
-    head = PlanHead().to(dev)
+    head = (PlanHeadBC() if args.head == "transformer" else PlanHead()).to(dev)
+    print(f"[plan] head={args.head}", flush=True)
     tr = sorted(create_splits_scenes()["train"]); va = sorted(create_splits_scenes()["val"])
     ihw, dsf = occ.image_hw, occ.downsample
     tds = PlanDataset(NuScenesOccTrainDataset(args.gts, nusc, image_hw=ihw, downsample=dsf, scenes=tr,
