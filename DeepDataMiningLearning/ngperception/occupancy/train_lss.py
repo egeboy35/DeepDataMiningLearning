@@ -226,6 +226,8 @@ def main():
     ap.add_argument("--occ-cb-cache", default=None, help="cache file for computed class weights")
     ap.add_argument("--backbone", choices=["resnet18", "dinov2", "dinov2_base", "dinov2_large", "vggt", "radio"],
                     default="resnet18")
+    ap.add_argument("--finetune-backbone", action="store_true", help="Phase-2: unfreeze the FM backbone")
+    ap.add_argument("--backbone-lr", type=float, default=1e-5, help="low LR for the unfrozen backbone")
     ap.add_argument("--vggt-depth-cache", default=None,
                     help="dir of <token>.npy frozen-VGGT depth (N,fH,fW); enables the VGGT-depth "
                          "lift prior (ablation #2). Build with cache_vggt_depth.py.")
@@ -293,8 +295,21 @@ def main():
                           generator=gen)
     val_ld = DataLoader(val_ds, batch_size=1, num_workers=2, collate_fn=collate)
 
-    opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],
-                            lr=args.lr, weight_decay=1e-4)
+    if args.finetune_backbone:                          # PHASE-2: unfreeze the FM backbone at a low LR
+        enc = getattr(model, "encoder", None)
+        dino = getattr(enc, "dino", None) if enc is not None else None
+        bb = []
+        if dino is not None:
+            for p in dino.parameters():
+                p.requires_grad = True; bb.append(p)
+        bb_ids = {id(p) for p in bb}
+        rest = [p for p in model.parameters() if p.requires_grad and id(p) not in bb_ids]
+        opt = torch.optim.AdamW([{"params": rest, "lr": args.lr},
+                                 {"params": bb, "lr": args.backbone_lr}], weight_decay=1e-4)
+        print(f"[lss_occ] light-finetune backbone: {sum(p.numel() for p in bb)/1e6:.1f}M @ lr {args.backbone_lr}")
+    else:
+        opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],
+                                lr=args.lr, weight_decay=1e-4)
     scaler = torch.cuda.amp.GradScaler(enabled=args.amp)
     epochs = 1 if args.smoke else args.epochs
     sched = (torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs * max(1, len(train_ld)))
