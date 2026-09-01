@@ -186,5 +186,10 @@ def build_detector(spec: str, taxonomy, device: str = "cuda",
 # Expected: prints the registered detector backends (after importing adapters).
 # ===========================================================================
 if __name__ == "__main__":
-    from . import hf_detr, yolo, locate_anything  # noqa: F401
-    print("Registered detector backends:", list(DETECTOR_REGISTRY))
+    # Under `python -m` this file runs as `__main__`; importing an adapter
+    # loads it a *second* time under its real name, and @register fills that
+    # copy's registry rather than this one. Read the canonical module so the
+    # self-test reports what a normal import sees instead of an empty list.
+    from DeepDataMiningLearning.ngdet.detectors import base as _canonical
+    from DeepDataMiningLearning.ngdet.detectors import hf_detr, yolo, locate_anything  # noqa: F401
+    print("Registered detector backends:", list(_canonical.DETECTOR_REGISTRY))

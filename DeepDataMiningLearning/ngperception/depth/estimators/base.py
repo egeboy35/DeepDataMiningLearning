@@ -116,5 +116,10 @@ def build_estimator(spec: str, device: str = "cuda", **kwargs) -> BaseDepthEstim
 # Expected: prints the registered depth backends (after importing adapters).
 # ===========================================================================
 if __name__ == "__main__":
-    from . import hf_depth  # noqa: F401
-    print("Registered depth backends:", list(DEPTH_REGISTRY))
+    # Under `python -m` this file runs as `__main__`; importing an adapter
+    # loads it a *second* time under its real name, and @register fills that
+    # copy's registry rather than this one. Read the canonical module so the
+    # self-test reports what a normal import sees instead of an empty list.
+    from DeepDataMiningLearning.ngperception.depth.estimators import base as _canonical
+    from DeepDataMiningLearning.ngperception.depth.estimators import hf_depth  # noqa: F401
+    print("Registered depth backends:", list(_canonical.DEPTH_REGISTRY))
