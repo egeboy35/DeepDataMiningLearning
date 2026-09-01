@@ -86,14 +86,29 @@ class OccupancyEvaluator:
         self.n += 1
 
     def summarize(self, verbose: bool = True) -> Dict[str, float]:
-        iou = self.tp / np.maximum(self.tp + self.fp + self.fn, 1)
-        miou = float(np.mean(iou))
+        union = self.tp + self.fp + self.fn
+        # A class absent from both the ground truth and the prediction has an
+        # undefined IoU (0/0). Averaging it in as 0 divides by the full class
+        # count instead of the classes actually present, which scales mIoU by
+        # n_present / NUM_SEMANTIC -- a perfect prediction on a scene holding 3
+        # of the 17 classes would score 0.176. Occ3D-nuScenes averages over the
+        # present classes (np.nanmean), so absent classes are excluded here too.
+        present = union > 0
+        iou = np.where(present, self.tp / np.maximum(union, 1), np.nan)
+        miou = float(np.nanmean(iou)) if present.any() else 0.0
         geo = self.g_tp / max(self.g_tp + self.g_fp + self.g_fn, 1)
-        out = {"mIoU": miou, "geo_IoU": float(geo), "num_samples": self.n}
+        out = {"mIoU": miou, "geo_IoU": float(geo), "num_samples": self.n,
+               "classes_present": int(present.sum()), "num_classes": int(NUM_SEMANTIC)}
+        # per_class keeps a plain float per class; absent classes report nan so a
+        # reader can tell "the model missed it" from "it was never there".
         out["per_class"] = {OCC3D_CLASSES[c]: float(iou[c]) for c in range(NUM_SEMANTIC)}
         if verbose:
-            print(f"  samples={self.n}  mIoU={miou:.3f}  geometric IoU={geo:.3f}")
-            top = sorted(out["per_class"].items(), key=lambda x: -x[1])[:6]
+            print(f"  samples={self.n}  mIoU={miou:.3f}  geometric IoU={geo:.3f}"
+                  f"  ({int(present.sum())}/{int(NUM_SEMANTIC)} classes present)")
+            # nan compares False against everything, so absent classes have to be
+            # dropped before sorting or they land in arbitrary positions.
+            scored = [(k, v) for k, v in out["per_class"].items() if not np.isnan(v)]
+            top = sorted(scored, key=lambda x: -x[1])[:6]
             print("  best classes: " + "  ".join(f"{k}={v:.2f}" for k, v in top))
         return out
 
@@ -111,3 +126,17 @@ if __name__ == "__main__":
     ev.add(gt.copy(), gt, mask); print("perfect:"); ev.summarize()
     ev2 = OccupancyEvaluator()
     ev2.add(np.full_like(gt, FREE), gt, mask); print("all-free:"); ev2.summarize()
+
+    # A scene need not contain all 17 classes. A perfect prediction must still
+    # score 1.0 -- averaging the absent classes in as 0 would report
+    # n_present / NUM_SEMANTIC instead.
+    sparse = np.zeros((40, 40, 8), np.uint8)
+    for c in range(1, 4):
+        sparse[(c - 1) * 2:(c - 1) * 2 + 2] = c
+    ev3 = OccupancyEvaluator()
+    ev3.add(sparse.copy(), sparse)
+    print("perfect on a scene with few classes:")
+    m = ev3.summarize()
+    assert abs(m["mIoU"] - 1.0) < 1e-9, m["mIoU"]
+    assert m["classes_present"] < m["num_classes"], m
+    print("OK")
