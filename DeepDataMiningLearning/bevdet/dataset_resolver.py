@@ -131,11 +131,13 @@ def _kitti_lidar2img(calib: Dict[str, np.ndarray]) -> np.ndarray:
     """
     3x4 projection: lidar2img = P2 @ R0_rect @ Tr_velo_to_cam
     """
-    P2 = calib["P2"]
-    R0 = calib["R0_rect"]
-    Tr = calib["Tr_velo_to_cam"]
-    Rt = (R0 @ Tr)[:3, :]  # 3x4
-    return (P2 @ Rt).astype(np.float32)  # 3x4
+    P2 = calib["P2"]              # 3x4
+    R0 = calib["R0_rect"]         # 4x4
+    Tr = calib["Tr_velo_to_cam"]  # 4x4
+    # Keep the rectification 4x4 through the product: slicing it to 3x4 first
+    # leaves (3,4) @ (3,4), which has no valid matmul, and also drops the
+    # translation column that R0_rect carries.
+    return (P2 @ (R0 @ Tr)).astype(np.float32)  # 3x4
 
 def iter_kitti_like(
     root: str,
