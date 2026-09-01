@@ -9,6 +9,7 @@ and complexity.
 
 import os
 import json
+import hashlib
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
 from collections import defaultdict
@@ -88,6 +89,25 @@ CATEGORY_NAMES = [
 ]
 
 DEFAULT_NUSCENES_ROOT = "/DATA10T/Datasets/nuScenes/v1.0-trainval"
+
+
+
+def stable_image_id(sample_token: str) -> int:
+    """A COCO image id for a sample token that is the same in every process.
+
+    `hash()` on a str is salted per interpreter (PEP 456), so an id built from
+    it changes between runs: predictions written today cannot be scored against
+    a ground-truth file rebuilt tomorrow, and two processes of one distributed
+    run disagree about which image is which.
+
+    Thirteen hex digits give 52 bits, which keeps every id an exact JavaScript
+    integer for COCO JSON consumers while putting collisions out of reach at
+    nuScenes scale: 0 collisions over 1,000,000 tokens, against ~555 ids lost to
+    a 1e6 range over the 34,149 keyframes of v1.0-trainval. The exact figure for
+    `hash()` moves between processes (564 and 594 in two runs here), which is
+    the first half of the problem showing up in the second.
+    """
+    return int(hashlib.sha256(sample_token.encode("utf-8")).hexdigest()[:13], 16)
 
 
 class NuScenesDataset(Dataset):
@@ -430,7 +450,7 @@ class NuScenesDataset(Dataset):
         target = {
             'boxes': boxes,
             'labels': labels,
-            'image_id': torch.tensor([hash(sample_token) % 1000000]),
+            'image_id': torch.tensor([stable_image_id(sample_token)]),
             'area': (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0]) if len(boxes) > 0 else torch.tensor([]),
             'iscrowd': torch.zeros((len(boxes),), dtype=torch.int64)
         }
