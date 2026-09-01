@@ -649,7 +649,7 @@ def get_official_eval_result(gt_annos, dt_annos, current_classes, class_to_name=
             0: 'Car',
             1: 'Pedestrian',
             2: 'Cyclist',
-            3: 'Sign', #'Van',
+            3: 'Van',
             4: 'Person_sitting',
             5: 'Truck'
         }
