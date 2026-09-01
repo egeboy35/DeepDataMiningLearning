@@ -116,6 +116,29 @@ def build_mixed(out_dir: str, sources: List[str], per_source: int, taxonomy: Tax
     # Shuffle the train order so that taking the first --max-images during training
     # yields a balanced (cross-source) subset -- needed for clean data-size studies.
     random.Random(seed + 1).shuffle(train_imgs)
+
+    # The shuffle only reaches the trainer if the image *ids* follow it.
+    # torchvision's CocoDetection does `self.ids = list(sorted(self.coco.imgs.keys()))`,
+    # so it discards the JSON list order, and img_id above is assigned per source in
+    # one contiguous block. Sorting therefore front-loads whichever source came first:
+    # --max-images 400 over a 3x400 mixed base read 400 KITTI images and nothing else.
+    # The held-out block needs the same treatment: it is written as val.json and
+    # labelled "held-out mixed", and run_eval defaults to --mixed-split val with
+    # --max-images 200, which over a 3x150 block read 150 KITTI + 50 Waymo and never
+    # reached nuImages. Shuffled with its own seed so the two orders stay independent.
+    random.Random(seed + 2).shuffle(test_imgs)
+
+    # Renumber so id order IS the shuffled order. Train takes 0..T-1 and the held-out
+    # block the range above it, which keeps the two disjoint by construction the way
+    # this function's docstring promises. The per-source test_<src>.json files filter
+    # on "source", not on id, so they are unaffected.
+    _remap = {im["id"]: new_id for new_id, im in enumerate(train_imgs)}
+    _remap.update({im["id"]: len(train_imgs) + off
+                   for off, im in enumerate(test_imgs)})
+    for _im in images:
+        _im["id"] = _remap[_im["id"]]
+    for _a in annotations:
+        _a["image_id"] = _remap[_a["image_id"]]
     splits = {"train": _write("train", train_imgs),
               "val": _write("val", test_imgs)}                 # held-out mixed
     for src in sources:                                        # held-out per source
