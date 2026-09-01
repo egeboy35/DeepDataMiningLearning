@@ -51,13 +51,23 @@ def _match(preds, gts, H, W, width, iou_thresh):
             inter = np.logical_and(a, b).sum()
             union = asum + b.sum() - inter
             iou[i, j] = inter / union if union > 0 else 0.0
+    # Greedy one-to-one over the whole matrix, best pair first. Offering each
+    # prediction only its argmax GT (and dropping it when that GT is taken)
+    # discards pairs this same matrix says clear the threshold: with two lanes
+    # 6 px apart and the 15 px stamp, p1 can have IoU 0.889 with a used g0 and
+    # 0.545 with a free g1, and be counted as a false positive anyway -- while
+    # g1 is counted as a false negative.
     tp = 0
-    used_g = set()
-    for i in np.argsort(-iou.max(axis=1)):          # preds by best-IoU first
-        j = int(iou[i].argmax())
-        if j not in used_g and iou[i, j] >= iou_thresh:
-            tp += 1
-            used_g.add(j)
+    used_p, used_g = set(), set()
+    for flat in np.argsort(-iou, axis=None):
+        i, j = np.unravel_index(flat, iou.shape)
+        if iou[i, j] < iou_thresh:
+            break                                   # sorted: nothing later qualifies
+        if i in used_p or j in used_g:
+            continue
+        tp += 1
+        used_p.add(int(i))
+        used_g.add(int(j))
     fp = len(preds) - tp
     fn = len(gts) - tp
     return tp, fp, fn
