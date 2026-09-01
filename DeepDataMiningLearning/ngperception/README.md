@@ -11,7 +11,7 @@ see the accuracy trade-offs, and then **fine-tune**.
 | **Depth / distance** | [depth/](depth/) | ✅ built | MiDaS/DPT → Depth-Anything-V2 → ZoeDepth (metric) | AbsRel / RMSE / δ1 |
 | **3D occupancy** | [occupancy/](occupancy/) | ✅ baseline | depth→voxel lift (ViPOcc-style) → learned occ nets (planned) | mIoU / geo-IoU (Occ3D) |
 | Segmentation | `segmentation/` | planned | DeepLabv3 → SegFormer → Mask2Former → OneFormer/SAM2 | mIoU / PQ |
-| Tracking (MOT) | `tracking/` | planned | SORT → DeepSORT → ByteTrack → OC-SORT/BoT-SORT | MOTA / IDF1 / HOTA |
+| **Tracking (MOT)** | [tracking/](tracking/) | ✅ baseline | **SORT** (motion-only, CPU) → DeepSORT → ByteTrack → OC-SORT/BoT-SORT (planned) | MOTA / IDF1 / ID-switches |
 | Lane detection | `lane/` | planned | UFLD → CLRNet → CLRerNet | F1 (TuSimple/CULane) |
 
 It reuses ngdet's datasets/taxonomy/detectors for **composable fusion** (e.g. detection →
